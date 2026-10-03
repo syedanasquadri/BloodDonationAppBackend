@@ -12,6 +12,10 @@ model Donor {
     name String
     bloodGroup String
     phone String
-    location String
+    address String?
+    city String?
+    state String?
+    latitude Float?
+    longitude Float?
     isAvailable Boolean @default(true)
 }

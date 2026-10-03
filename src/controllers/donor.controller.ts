@@ -17,7 +17,17 @@ export const createDonor = async (req: Request, res: Response) => {
 };
 
 export const getDonors = async (req: Request, res: Response) => {
-  const donors = await prisma.donor.findMany();
+  const { bloodGroup } = req.query;
+
+  const where = bloodGroup
+    ? {
+        bloodGroup: String(bloodGroup),
+      }
+    : {};
+
+  const donors = await prisma.donor.findMany({
+    where,
+  });
 
   res.json(donors);
 };
