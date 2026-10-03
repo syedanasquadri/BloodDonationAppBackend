@@ -2,14 +2,18 @@ import { type Request, type Response } from "express";
 import { prisma } from "../lib/prisma.js";
 
 export const createDonor = async (req: Request, res: Response) => {
-  const { name, bloodGroup, phone, location } = req.body;
+  const { name, bloodGroup, phone, address, city, state, latitude, longitude } = req.body;
 
   const donor = await prisma.donor.create({
     data: {
       name,
       bloodGroup,
       phone,
-      location,
+      address,
+      city,
+      state,
+      latitude,
+      longitude,
     },
   });
 
