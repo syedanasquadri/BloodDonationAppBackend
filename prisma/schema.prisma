@@ -18,4 +18,16 @@ model Donor {
     latitude Float?
     longitude Float?
     isAvailable Boolean @default(true)
+    donationRequests DonationRequest[]
+}
+
+model DonationRequest {
+  id             Int      @id @default(autoincrement())
+  donorId        Int
+  requesterName  String
+  requesterPhone String
+  bloodGroup     String
+  status         String   @default("PENDING")
+  createdAt      DateTime @default(now())
+  donor Donor @relation(fields: [donorId], references: [id])
 }
