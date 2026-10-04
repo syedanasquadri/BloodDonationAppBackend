@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 
 import donorRoutes from "./routes/donor.routes.js";
+import donationRequestRoutes from "./routes/donationRequest.routes.js";
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/donors", donorRoutes);
+app.use("/api/donation-requests", donationRequestRoutes);
 
 app.listen(3000, () => {
   console.log("Server is running on port 3000");
