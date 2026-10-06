@@ -7,27 +7,30 @@ datasource db {
   provider = "postgresql"
 }
 
-model Donor {
+model User {
     id Int @id @default(autoincrement())
     name String
     bloodGroup String
-    phone String
+    phone String @unique
     address String?
     city String?
     state String?
     latitude Float?
     longitude Float?
     isAvailable Boolean @default(true)
-    donationRequests DonationRequest[]
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    sentRequests     DonationRequest[] @relation("Requester")
+    receivedRequests DonationRequest[] @relation("Donor")
 }
 
 model DonationRequest {
   id             Int      @id @default(autoincrement())
+  requesterId    Int
   donorId        Int
-  requesterName  String
-  requesterPhone String
   bloodGroup     String
   status         String   @default("PENDING")
   createdAt      DateTime @default(now())
-  donor Donor @relation(fields: [donorId], references: [id])
+  requester User @relation("Requester", fields: [requesterId], references: [id])
+  donor     User @relation("Donor", fields: [donorId], references: [id])
 }

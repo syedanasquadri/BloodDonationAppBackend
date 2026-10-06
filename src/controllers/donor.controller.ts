@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma.js";
 export const createDonor = async (req: Request, res: Response) => {
   const { name, bloodGroup, phone, address, city, state, latitude, longitude } = req.body;
 
-  const donor = await prisma.donor.create({
+  const donor = await prisma.user.create({
     data: {
       name,
       bloodGroup,
@@ -29,7 +29,7 @@ export const getDonors = async (req: Request, res: Response) => {
       }
     : {};
 
-  const donors = await prisma.donor.findMany({
+  const donors = await prisma.user.findMany({
     where,
   });
 
@@ -39,7 +39,7 @@ export const getDonors = async (req: Request, res: Response) => {
 export const updateDonor = async (req: Request, res: Response) => {
   const id = Number(req.params.id);
 
-  const donor = await prisma.donor.update({
+  const donor = await prisma.user.update({
     where: { id },
     data: req.body,
   });
@@ -50,7 +50,7 @@ export const updateDonor = async (req: Request, res: Response) => {
 export const deleteDonor = async (req: Request, res: Response) => {
   const id = Number(req.params.id);
 
-  await prisma.donor.delete({
+  await prisma.user.delete({
     where: { id },
   });
 
