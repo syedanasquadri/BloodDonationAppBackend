@@ -1,7 +1,5 @@
 import express from "express";
 import cors from "cors";
-
-import donorRoutes from "./routes/donor.routes.js";
 import donationRequestRoutes from "./routes/donationRequest.routes.js";
 import userRoutes from "./routes/user.routes.js";
 
