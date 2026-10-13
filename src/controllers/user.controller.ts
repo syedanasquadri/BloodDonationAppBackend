@@ -1,6 +1,6 @@
 import { type Request, type Response } from "express";
-
 import { prisma } from "../lib/prisma.js";
+import type { BloodGroup } from "../generated/prisma/enums.js";
 
 export const createUser = async (req: Request, res: Response) => {
   const {
@@ -35,7 +35,7 @@ export const getUsers = async (req: Request, res: Response) => {
 
   const where = bloodGroup
     ? {
-        bloodGroup: String(bloodGroup),
+        bloodGroup: String(bloodGroup) as BloodGroup,
       }
     : {};
 

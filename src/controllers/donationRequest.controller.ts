@@ -1,5 +1,6 @@
 import { type Request, type Response } from "express";
 import { prisma } from "../lib/prisma.js";
+import { DonationRequestStatus, type BloodGroup } from "../generated/prisma/enums.js";
 
 export const createDonationRequest = async (req: Request, res: Response) => {
   const { donorId, requesterId, bloodGroup } = req.body;
@@ -8,7 +9,7 @@ export const createDonationRequest = async (req: Request, res: Response) => {
     data: {
       donorId,
       requesterId,
-      bloodGroup,
+      bloodGroup: bloodGroup as BloodGroup,
     },
   });
 
@@ -45,16 +46,16 @@ export const updateDonationRequestStatus = async (
 ) => {
   const id = Number(req.params.id);
   const { status } = req.body;
-  const validStatuses = ["PENDING", "ACCEPTED", "REJECTED"];
+  const validStatuses = Object.values(DonationRequestStatus);
 
-  if (!validStatuses.includes(status)) {
+  if (!validStatuses.includes(status as DonationRequestStatus)) {
     return res.status(400).json({
       message: "Invalid donation request status",
     });
   }
   const donationRequest = await prisma.donationRequest.update({
     where: { id },
-    data: { status },
+    data: { status: status as DonationRequestStatus },
   });
 
   res.json(donationRequest);
