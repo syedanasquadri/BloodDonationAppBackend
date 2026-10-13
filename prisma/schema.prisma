@@ -7,30 +7,91 @@ datasource db {
   provider = "postgresql"
 }
 
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+}
+
+enum DonationRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum NotificationType {
+  DONATION_REQUEST
+  REQUEST_ACCEPTED
+  REQUEST_REJECTED
+}
+
 model User {
-    id Int @id @default(autoincrement())
-    name String
-    bloodGroup String
-    phone String @unique
-    address String?
-    city String?
-    state String?
-    latitude Float?
-    longitude Float?
-    isAvailable Boolean @default(true)
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    sentRequests     DonationRequest[] @relation("Requester")
-    receivedRequests DonationRequest[] @relation("Donor")
+  id              Int      @id @default(autoincrement())
+  name            String
+  bloodGroup      BloodGroup
+  phone           String   @unique
+  address         String?
+  city            String?
+  state           String?
+  latitude        Float?
+  longitude       Float?
+  isPhoneVerified Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sentRequests     DonationRequest[] @relation("Requester")
+  receivedRequests DonationRequest[] @relation("Donor")
+  notifications    Notification[]
+
+  @@index([bloodGroup])
+  @@index([city])
 }
 
 model DonationRequest {
-  id             Int      @id @default(autoincrement())
-  requesterId    Int
-  donorId        Int
-  bloodGroup     String
-  status         String   @default("PENDING")
-  createdAt      DateTime @default(now())
+  id          Int                   @id @default(autoincrement())
+  requesterId Int
+  donorId     Int
+  bloodGroup  BloodGroup
+  status      DonationRequestStatus @default(PENDING)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
   requester User @relation("Requester", fields: [requesterId], references: [id])
   donor     User @relation("Donor", fields: [donorId], references: [id])
+
+  @@index([requesterId])
+  @@index([donorId])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model OtpVerification {
+  id         Int      @id @default(autoincrement())
+  phone      String
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int      @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([phone])
+  @@index([expiresAt])
 }
