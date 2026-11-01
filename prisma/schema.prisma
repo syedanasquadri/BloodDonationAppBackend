@@ -48,6 +48,7 @@ model User {
   sentRequests     DonationRequest[] @relation("Requester")
   receivedRequests DonationRequest[] @relation("Donor")
   notifications    Notification[]
+  sessions Session[]
 
   @@index([bloodGroup])
   @@index([city])
@@ -93,5 +94,18 @@ model OtpVerification {
   createdAt  DateTime @default(now())
 
   @@index([phone])
+  @@index([expiresAt])
+}
+
+model Session {
+  id               String   @id @default(cuid())
+  userId           Int
+  refreshTokenHash String   @unique
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@index([expiresAt])
 }
