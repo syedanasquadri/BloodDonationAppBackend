@@ -24,6 +24,7 @@ export const createUser = async (req: Request, res: Response) => {
 
 export const getUsers = async (req: Request, res: Response) => {
   const { bloodGroup } = req.query;
+  const userId = res.locals.userId as number;
 
   if (
     bloodGroup !== undefined &&
@@ -36,7 +37,10 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 
   const users = await prisma.user.findMany({
-    where: bloodGroup ? { bloodGroup: bloodGroup as BloodGroup } : {},
+    where: {
+      id: { not: userId },
+      ...(bloodGroup && { bloodGroup: bloodGroup as BloodGroup }),
+    },
     select: {
       id: true,
       name: true,
