@@ -1,6 +1,7 @@
 import { type Request, type Response } from "express";
 import { prisma } from "../lib/prisma.js";
-import { BloodGroup } from "../generated/prisma/enums.js";
+import { BloodGroup, NotificationType } from "../generated/prisma/enums.js";
+import { notificationService } from "../notifications/notification.service.js";
 
 export const createUser = async (req: Request, res: Response) => {
   const { name, bloodGroup, phone, address, city, state, latitude, longitude } =
@@ -145,6 +146,19 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       updatedAt: true,
     },
   });
+
+  notificationService
+    .sendNotification({
+      userId,
+      type: NotificationType.ACCOUNT_SECURITY,
+      title: "Profile Updated",
+      message: "Your profile information was successfully updated.",
+      entityType: "user",
+      entityId: userId,
+    })
+    .catch((err) =>
+      console.error("Failed to dispatch security notification:", err),
+    );
 
   return res.status(200).json(user);
 };

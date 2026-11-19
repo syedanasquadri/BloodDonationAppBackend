@@ -3,7 +3,9 @@ import { prisma } from "../lib/prisma.js";
 import {
   DonationRequestStatus,
   BloodGroup,
+  NotificationType,
 } from "../generated/prisma/enums.js";
+import { notificationService } from "../notifications/notification.service.js";
 
 export const createDonationRequest = async (req: Request, res: Response) => {
   const requesterId = res.locals.userId as number;
@@ -46,6 +48,25 @@ export const createDonationRequest = async (req: Request, res: Response) => {
       bloodGroup: bloodGroup as BloodGroup,
     },
   });
+
+  // Notify the eligible donor through centralized notification service
+  notificationService
+    .sendNotification({
+      userId: donorId,
+      type: NotificationType.DONATION_REQUEST,
+      title: "New Blood Donation Request",
+      message: `A request for ${bloodGroup} blood was sent to you.`,
+      entityType: "donation_request",
+      entityId: donationRequest.id,
+      data: {
+        requestId: donationRequest.id,
+        bloodGroup: donationRequest.bloodGroup,
+        requesterId,
+      },
+    })
+    .catch((err) => {
+      console.error("Failed to dispatch donation request notification:", err);
+    });
 
   return res.status(201).json(donationRequest);
 };
@@ -149,6 +170,51 @@ export const updateDonationRequestStatus = async (
   const updatedRequest = await prisma.donationRequest.findUnique({
     where: { id },
   });
+
+  // Notify relevant party through centralized notification service
+  if (status === DonationRequestStatus.ACCEPTED) {
+    notificationService
+      .sendNotification({
+        userId: request.requesterId,
+        type: NotificationType.REQUEST_ACCEPTED,
+        title: "Donation Request Accepted",
+        message: "A donor has accepted your blood donation request.",
+        entityType: "donation_request",
+        entityId: id,
+        data: { requestId: id, status },
+      })
+      .catch((err) =>
+        console.error("Failed to dispatch acceptance notification:", err),
+      );
+  } else if (status === DonationRequestStatus.REJECTED) {
+    notificationService
+      .sendNotification({
+        userId: request.requesterId,
+        type: NotificationType.REQUEST_REJECTED,
+        title: "Donation Request Declined",
+        message: "A donor was unable to fulfill your blood donation request.",
+        entityType: "donation_request",
+        entityId: id,
+        data: { requestId: id, status },
+      })
+      .catch((err) =>
+        console.error("Failed to dispatch rejection notification:", err),
+      );
+  } else if (status === DonationRequestStatus.CANCELLED) {
+    notificationService
+      .sendNotification({
+        userId: request.donorId,
+        type: NotificationType.REQUEST_CANCELLED,
+        title: "Donation Request Cancelled",
+        message: "A blood donation request was cancelled by the requester.",
+        entityType: "donation_request",
+        entityId: id,
+        data: { requestId: id, status },
+      })
+      .catch((err) =>
+        console.error("Failed to dispatch cancellation notification:", err),
+      );
+  }
 
   return res.status(200).json(updatedRequest);
 };
