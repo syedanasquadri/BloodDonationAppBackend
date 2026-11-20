@@ -18,8 +18,18 @@ export const sendOtp = async (phone: string) => {
     },
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`Development OTP for ${phone}: ${otp}`);
+  const isTestOtpLoggingEnabled = process.env.TEST_OTP_LOGGING === "true";
+  const testPhones = (process.env.TEST_OTP_PHONES || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const isAllowlistedPhone = testPhones.includes(phone.trim());
+
+  if (
+    process.env.NODE_ENV !== "production" ||
+    (isTestOtpLoggingEnabled && isAllowlistedPhone)
+  ) {
+    console.log(`Generated OTP for ${phone}: ${otp}`);
   }
 };
 
