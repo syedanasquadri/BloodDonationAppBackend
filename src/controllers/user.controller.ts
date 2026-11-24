@@ -2,6 +2,7 @@ import { type Request, type Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { BloodGroup, NotificationType } from "../generated/prisma/enums.js";
 import { notificationService } from "../notifications/notification.service.js";
+import { calculateDistanceKm } from "../lib/geo.js";
 
 export const createUser = async (req: Request, res: Response) => {
   const { name, bloodGroup, phone, address, city, state, latitude, longitude } =
@@ -24,7 +25,7 @@ export const createUser = async (req: Request, res: Response) => {
 };
 
 export const getUsers = async (req: Request, res: Response) => {
-  const { bloodGroup } = req.query;
+  const { bloodGroup, lat, lng } = req.query;
   const userId = res.locals.userId as number;
 
   if (
@@ -35,6 +36,27 @@ export const getUsers = async (req: Request, res: Response) => {
     return res.status(400).json({
       message: "Invalid blood group.",
     });
+  }
+
+  // Parse and validate optional user coordinates
+  let parsedLat: number | null = null;
+  let parsedLng: number | null = null;
+
+  if (lat !== undefined && lng !== undefined) {
+    const rawLat = typeof lat === "string" ? parseFloat(lat) : Number(lat);
+    const rawLng = typeof lng === "string" ? parseFloat(lng) : Number(lng);
+
+    if (
+      !Number.isNaN(rawLat) &&
+      !Number.isNaN(rawLng) &&
+      rawLat >= -90 &&
+      rawLat <= 90 &&
+      rawLng >= -180 &&
+      rawLng <= 180
+    ) {
+      parsedLat = rawLat;
+      parsedLng = rawLng;
+    }
   }
 
   const users = await prisma.user.findMany({
@@ -48,10 +70,55 @@ export const getUsers = async (req: Request, res: Response) => {
       bloodGroup: true,
       city: true,
       state: true,
+      latitude: true,
+      longitude: true,
     },
   });
 
-  return res.status(200).json(users);
+  const hasCoords = parsedLat !== null && parsedLng !== null;
+
+  const result = users.map((user) => {
+    let distanceKm: number | null = null;
+
+    if (
+      hasCoords &&
+      user.latitude !== null &&
+      user.longitude !== null
+    ) {
+      distanceKm = calculateDistanceKm(
+        parsedLat!,
+        parsedLng!,
+        user.latitude,
+        user.longitude,
+      );
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      bloodGroup: user.bloodGroup,
+      city: user.city,
+      state: user.state,
+      distanceKm,
+    };
+  });
+
+  if (hasCoords) {
+    result.sort((a, b) => {
+      if (a.distanceKm !== null && b.distanceKm !== null) {
+        return a.distanceKm - b.distanceKm;
+      }
+      if (a.distanceKm !== null && b.distanceKm === null) {
+        return -1;
+      }
+      if (a.distanceKm === null && b.distanceKm !== null) {
+        return 1;
+      }
+      return 0;
+    });
+  }
+
+  return res.status(200).json(result);
 };
 
 export const getUserProfile = async (req: Request, res: Response) => {
@@ -125,6 +192,23 @@ export const updateUserProfile = async (req: Request, res: Response) => {
     });
   }
 
+  if (
+    (latitude !== undefined &&
+      (typeof latitude !== "number" ||
+        Number.isNaN(latitude) ||
+        latitude < -90 ||
+        latitude > 90)) ||
+    (longitude !== undefined &&
+      (typeof longitude !== "number" ||
+        Number.isNaN(longitude) ||
+        longitude < -180 ||
+        longitude > 180))
+  ) {
+    return res.status(400).json({
+      message: "Invalid latitude or longitude.",
+    });
+  }
+
   const user = await prisma.user.update({
     where: { id: userId },
     data: {
@@ -140,8 +224,11 @@ export const updateUserProfile = async (req: Request, res: Response) => {
       id: true,
       name: true,
       bloodGroup: true,
+      address: true,
       city: true,
       state: true,
+      latitude: true,
+      longitude: true,
       createdAt: true,
       updatedAt: true,
     },
