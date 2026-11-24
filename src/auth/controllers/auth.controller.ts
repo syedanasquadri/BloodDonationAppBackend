@@ -136,9 +136,15 @@ export const completeSignupController = async (req: Request, res: Response) => {
       (city !== undefined && typeof city !== "string") ||
       (state !== undefined && typeof state !== "string") ||
       (latitude !== undefined &&
-        (typeof latitude !== "number" || latitude < -90 || latitude > 90)) ||
+        (typeof latitude !== "number" ||
+          Number.isNaN(latitude) ||
+          latitude < -90 ||
+          latitude > 90)) ||
       (longitude !== undefined &&
-        (typeof longitude !== "number" || longitude < -180 || longitude > 180))
+        (typeof longitude !== "number" ||
+          Number.isNaN(longitude) ||
+          longitude < -180 ||
+          longitude > 180))
     ) {
       return res.status(400).json({
         message: "Invalid profile details.",
