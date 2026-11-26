@@ -76,9 +76,35 @@ export const getSentRequests = async (req: Request, res: Response) => {
 
   const requests = await prisma.donationRequest.findMany({
     where: { requesterId: userId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      donor: {
+        select: {
+          id: true,
+          name: true,
+          bloodGroup: true,
+          city: true,
+          state: true,
+          phone: true,
+        },
+      },
+    },
   });
 
-  return res.status(200).json(requests);
+  const sanitized = requests.map((request) => ({
+    ...request,
+    donor: request.donor
+      ? {
+          ...request.donor,
+          phone:
+            request.status === DonationRequestStatus.ACCEPTED
+              ? request.donor.phone
+              : null,
+        }
+      : null,
+  }));
+
+  return res.status(200).json(sanitized);
 };
 
 export const getReceivedRequests = async (req: Request, res: Response) => {
@@ -86,9 +112,35 @@ export const getReceivedRequests = async (req: Request, res: Response) => {
 
   const requests = await prisma.donationRequest.findMany({
     where: { donorId: userId },
+    orderBy: { createdAt: "desc" },
+    include: {
+      requester: {
+        select: {
+          id: true,
+          name: true,
+          bloodGroup: true,
+          city: true,
+          state: true,
+          phone: true,
+        },
+      },
+    },
   });
 
-  return res.status(200).json(requests);
+  const sanitized = requests.map((request) => ({
+    ...request,
+    requester: request.requester
+      ? {
+          ...request.requester,
+          phone:
+            request.status === DonationRequestStatus.ACCEPTED
+              ? request.requester.phone
+              : null,
+        }
+      : null,
+  }));
+
+  return res.status(200).json(sanitized);
 };
 
 export const updateDonationRequestStatus = async (
@@ -169,7 +221,52 @@ export const updateDonationRequestStatus = async (
 
   const updatedRequest = await prisma.donationRequest.findUnique({
     where: { id },
+    include: {
+      donor: {
+        select: {
+          id: true,
+          name: true,
+          bloodGroup: true,
+          city: true,
+          state: true,
+          phone: true,
+        },
+      },
+      requester: {
+        select: {
+          id: true,
+          name: true,
+          bloodGroup: true,
+          city: true,
+          state: true,
+          phone: true,
+        },
+      },
+    },
   });
+
+  if (!updatedRequest) {
+    return res.status(404).json({
+      message: "Donation request not found.",
+    });
+  }
+
+  const isAccepted = updatedRequest.status === DonationRequestStatus.ACCEPTED;
+  const sanitized = {
+    ...updatedRequest,
+    donor: updatedRequest.donor
+      ? {
+          ...updatedRequest.donor,
+          phone: isAccepted ? updatedRequest.donor.phone : null,
+        }
+      : null,
+    requester: updatedRequest.requester
+      ? {
+          ...updatedRequest.requester,
+          phone: isAccepted ? updatedRequest.requester.phone : null,
+        }
+      : null,
+  };
 
   // Notify relevant party through centralized notification service
   if (status === DonationRequestStatus.ACCEPTED) {
@@ -216,5 +313,5 @@ export const updateDonationRequestStatus = async (
       );
   }
 
-  return res.status(200).json(updatedRequest);
+  return res.status(200).json(sanitized);
 };
