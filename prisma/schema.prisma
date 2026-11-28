@@ -25,6 +25,12 @@ enum DonationRequestStatus {
   CANCELLED
 }
 
+enum UrgencyLevel {
+  CRITICAL
+  WITHIN_24H
+  SCHEDULED
+}
+
 enum NotificationType {
   DONATION_REQUEST
   REQUEST_ACCEPTED
@@ -62,13 +68,16 @@ model User {
 }
 
 model DonationRequest {
-  id          Int                   @id @default(autoincrement())
-  requesterId Int
-  donorId     Int
-  bloodGroup  BloodGroup
-  status      DonationRequestStatus @default(PENDING)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  id           Int                   @id @default(autoincrement())
+  requesterId  Int
+  donorId      Int
+  bloodGroup   BloodGroup
+  status       DonationRequestStatus @default(PENDING)
+  hospitalName String?
+  hospitalCity String?
+  urgency      UrgencyLevel          @default(WITHIN_24H)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
   requester User @relation("Requester", fields: [requesterId], references: [id])
   donor     User @relation("Donor", fields: [donorId], references: [id])

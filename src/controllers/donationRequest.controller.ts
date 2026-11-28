@@ -4,14 +4,16 @@ import {
   DonationRequestStatus,
   BloodGroup,
   NotificationType,
+  UrgencyLevel,
 } from "../generated/prisma/enums.js";
 import { notificationService } from "../notifications/notification.service.js";
 
 export const createDonationRequest = async (req: Request, res: Response) => {
   const requesterId = res.locals.userId as number;
-  const { donorId, bloodGroup } = req.body;
+  const { donorId, bloodGroup, hospitalName, hospitalCity, urgency } = req.body;
 
   const allowedBloodGroups = Object.values(BloodGroup);
+  const allowedUrgencyLevels = Object.values(UrgencyLevel);
 
   if (
     !Number.isInteger(donorId) ||
@@ -30,6 +32,51 @@ export const createDonationRequest = async (req: Request, res: Response) => {
     });
   }
 
+  let validatedHospitalName: string | null = null;
+  if (hospitalName !== undefined && hospitalName !== null) {
+    if (typeof hospitalName !== "string") {
+      return res.status(400).json({
+        message: "Hospital name must be a valid text string.",
+      });
+    }
+    const trimmed = hospitalName.trim();
+    if (trimmed.length > 0 && (trimmed.length < 2 || trimmed.length > 120)) {
+      return res.status(400).json({
+        message: "Hospital name must be between 2 and 120 characters.",
+      });
+    }
+    validatedHospitalName = trimmed.length > 0 ? trimmed : null;
+  }
+
+  let validatedHospitalCity: string | null = null;
+  if (hospitalCity !== undefined && hospitalCity !== null) {
+    if (typeof hospitalCity !== "string") {
+      return res.status(400).json({
+        message: "Hospital city must be a valid text string.",
+      });
+    }
+    const trimmed = hospitalCity.trim();
+    if (trimmed.length > 0 && (trimmed.length < 2 || trimmed.length > 100)) {
+      return res.status(400).json({
+        message: "Hospital city must be between 2 and 100 characters.",
+      });
+    }
+    validatedHospitalCity = trimmed.length > 0 ? trimmed : null;
+  }
+
+  let validatedUrgency: UrgencyLevel = UrgencyLevel.WITHIN_24H;
+  if (urgency !== undefined && urgency !== null) {
+    if (
+      typeof urgency !== "string" ||
+      !allowedUrgencyLevels.includes(urgency as UrgencyLevel)
+    ) {
+      return res.status(400).json({
+        message: "Invalid urgency level. Allowed values: CRITICAL, WITHIN_24H, SCHEDULED.",
+      });
+    }
+    validatedUrgency = urgency as UrgencyLevel;
+  }
+
   const donor = await prisma.user.findUnique({
     where: { id: donorId },
     select: { id: true },
@@ -46,22 +93,45 @@ export const createDonationRequest = async (req: Request, res: Response) => {
       donorId,
       requesterId,
       bloodGroup: bloodGroup as BloodGroup,
+      hospitalName: validatedHospitalName,
+      hospitalCity: validatedHospitalCity,
+      urgency: validatedUrgency,
     },
   });
+
+  // Enrich notification message when hospitalName or urgency === "CRITICAL" is provided
+  let notificationTitle = "New Blood Donation Request";
+  let notificationMessage: string;
+
+  if (validatedUrgency === UrgencyLevel.CRITICAL) {
+    notificationTitle = "Urgent Blood Donation Request";
+    if (validatedHospitalName) {
+      notificationMessage = `Urgent request for ${bloodGroup} blood at ${validatedHospitalName}.`;
+    } else {
+      notificationMessage = `Urgent request for ${bloodGroup} blood was sent to you.`;
+    }
+  } else if (validatedHospitalName) {
+    notificationMessage = `A request for ${bloodGroup} blood at ${validatedHospitalName} was sent to you.`;
+  } else {
+    notificationMessage = `A request for ${bloodGroup} blood was sent to you.`;
+  }
 
   // Notify the eligible donor through centralized notification service
   notificationService
     .sendNotification({
       userId: donorId,
       type: NotificationType.DONATION_REQUEST,
-      title: "New Blood Donation Request",
-      message: `A request for ${bloodGroup} blood was sent to you.`,
+      title: notificationTitle,
+      message: notificationMessage,
       entityType: "donation_request",
       entityId: donationRequest.id,
       data: {
         requestId: donationRequest.id,
         bloodGroup: donationRequest.bloodGroup,
         requesterId,
+        urgency: donationRequest.urgency,
+        hospitalName: donationRequest.hospitalName,
+        hospitalCity: donationRequest.hospitalCity,
       },
     })
     .catch((err) => {

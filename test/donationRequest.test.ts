@@ -72,8 +72,8 @@ process.env.DATABASE_URL = testDatabaseUrl;
 const [
   { prisma },
   { default: donationRequestRoutes },
-  { BloodGroup, DonationRequestStatus },
-  { getSentRequests, getReceivedRequests },
+  { BloodGroup, DonationRequestStatus, UrgencyLevel },
+  { createDonationRequest, getSentRequests, getReceivedRequests },
 ] = await Promise.all([
   import("../src/lib/prisma.js"),
   import("../src/routes/donationRequest.routes.js"),
@@ -580,5 +580,249 @@ test("getReceivedRequests returns counterparty requester details ordered newest-
     assert.equal(payload[3].requester.phone, "+919444444444", "phone must be exposed for ACCEPTED received request");
   } finally {
     prisma.donationRequest.findMany = originalFindMany;
+  }
+});
+
+test("creating a donation request with hospitalName, hospitalCity, and urgency stores and returns them in sent and received endpoints", async () => {
+  const originalFindUnique = prisma.user.findUnique;
+  const originalCreate = prisma.donationRequest.create;
+  const originalFindMany = prisma.donationRequest.findMany;
+  const { notificationService } = await import("../src/notifications/notification.service.js");
+  const originalSendNotification = notificationService.sendNotification;
+
+  let capturedCreateData: any = null;
+  let capturedNotification: any = null;
+
+  notificationService.sendNotification = (async (input: any) => {
+    capturedNotification = input;
+    return null;
+  }) as any;
+
+  prisma.user.findUnique = (async () => ({ id: 2 })) as any;
+  prisma.donationRequest.create = (async (args: any) => {
+    capturedCreateData = args.data;
+    return {
+      id: 501,
+      ...args.data,
+      status: "PENDING",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }) as any;
+
+  try {
+    let statusCode = 0;
+    let payload: any = null;
+
+    const req = {
+      body: {
+        donorId: 2,
+        bloodGroup: "O_POSITIVE",
+        hospitalName: "  Apollo Hospital  ",
+        hospitalCity: "  Bengaluru  ",
+        urgency: "CRITICAL",
+      },
+    } as any;
+
+    const res = {
+      locals: { userId: 1 },
+      status: (code: number) => {
+        statusCode = code;
+        return {
+          json: (data: any) => {
+            payload = data;
+          },
+        };
+      },
+    } as any;
+
+    await createDonationRequest(req, res);
+
+    assert.equal(statusCode, 201);
+    assert.equal(capturedCreateData.donorId, 2);
+    assert.equal(capturedCreateData.requesterId, 1);
+    assert.equal(capturedCreateData.bloodGroup, "O_POSITIVE");
+    assert.equal(capturedCreateData.hospitalName, "Apollo Hospital");
+    assert.equal(capturedCreateData.hospitalCity, "Bengaluru");
+    assert.equal(capturedCreateData.urgency, "CRITICAL");
+
+    assert.equal(payload.hospitalName, "Apollo Hospital");
+    assert.equal(payload.hospitalCity, "Bengaluru");
+    assert.equal(payload.urgency, "CRITICAL");
+
+    // Verify enriched notification for CRITICAL with hospital name
+    assert.equal(capturedNotification.title, "Urgent Blood Donation Request");
+    assert.equal(
+      capturedNotification.message,
+      "Urgent request for O_POSITIVE blood at Apollo Hospital.",
+    );
+    assert.equal(capturedNotification.data.hospitalName, "Apollo Hospital");
+    assert.equal(capturedNotification.data.urgency, "CRITICAL");
+
+    // Also verify sent requests endpoint returns hospitalName, hospitalCity, urgency
+    prisma.donationRequest.findMany = (async () => [
+      {
+        id: 501,
+        requesterId: 1,
+        donorId: 2,
+        bloodGroup: "O_POSITIVE",
+        status: "PENDING",
+        hospitalName: "Apollo Hospital",
+        hospitalCity: "Bengaluru",
+        urgency: "CRITICAL",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        donor: {
+          id: 2,
+          name: "Test Donor",
+          bloodGroup: "O_POSITIVE",
+          city: "Bengaluru",
+          state: "Karnataka",
+          phone: "+919876543210",
+        },
+      },
+    ]) as any;
+
+    let sentPayload: any = null;
+    const sentRes = {
+      locals: { userId: 1 },
+      status: (code: number) => {
+        assert.equal(code, 200);
+        return {
+          json: (data: any) => {
+            sentPayload = data;
+          },
+        };
+      },
+    } as any;
+
+    await getSentRequests({} as any, sentRes);
+    assert.equal(sentPayload[0].hospitalName, "Apollo Hospital");
+    assert.equal(sentPayload[0].hospitalCity, "Bengaluru");
+    assert.equal(sentPayload[0].urgency, "CRITICAL");
+
+    // Also verify received requests endpoint returns hospitalName, hospitalCity, urgency
+    prisma.donationRequest.findMany = (async () => [
+      {
+        id: 501,
+        requesterId: 1,
+        donorId: 2,
+        bloodGroup: "O_POSITIVE",
+        status: "PENDING",
+        hospitalName: "Apollo Hospital",
+        hospitalCity: "Bengaluru",
+        urgency: "CRITICAL",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        requester: {
+          id: 1,
+          name: "Test Requester",
+          bloodGroup: "O_POSITIVE",
+          city: "Bengaluru",
+          state: "Karnataka",
+          phone: "+919876543211",
+        },
+      },
+    ]) as any;
+
+    let receivedPayload: any = null;
+    const receivedRes = {
+      locals: { userId: 2 },
+      status: (code: number) => {
+        assert.equal(code, 200);
+        return {
+          json: (data: any) => {
+            receivedPayload = data;
+          },
+        };
+      },
+    } as any;
+
+    await getReceivedRequests({} as any, receivedRes);
+    assert.equal(receivedPayload[0].hospitalName, "Apollo Hospital");
+    assert.equal(receivedPayload[0].hospitalCity, "Bengaluru");
+    assert.equal(receivedPayload[0].urgency, "CRITICAL");
+  } finally {
+    prisma.user.findUnique = originalFindUnique;
+    prisma.donationRequest.create = originalCreate;
+    prisma.donationRequest.findMany = originalFindMany;
+    notificationService.sendNotification = originalSendNotification;
+  }
+});
+
+test("creating a donation request without optional hospital fields still succeeds and defaults urgency to WITHIN_24H", async () => {
+  const originalFindUnique = prisma.user.findUnique;
+  const originalCreate = prisma.donationRequest.create;
+  const { notificationService } = await import("../src/notifications/notification.service.js");
+  const originalSendNotification = notificationService.sendNotification;
+
+  let capturedCreateData: any = null;
+  let capturedNotification: any = null;
+
+  notificationService.sendNotification = (async (input: any) => {
+    capturedNotification = input;
+    return null;
+  }) as any;
+
+  prisma.user.findUnique = (async () => ({ id: 2 })) as any;
+  prisma.donationRequest.create = (async (args: any) => {
+    capturedCreateData = args.data;
+    return {
+      id: 502,
+      ...args.data,
+      status: "PENDING",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }) as any;
+
+  try {
+    let statusCode = 0;
+    let payload: any = null;
+
+    const req = {
+      body: {
+        donorId: 2,
+        bloodGroup: "O_POSITIVE",
+      },
+    } as any;
+
+    const res = {
+      locals: { userId: 1 },
+      status: (code: number) => {
+        statusCode = code;
+        return {
+          json: (data: any) => {
+            payload = data;
+          },
+        };
+      },
+    } as any;
+
+    await createDonationRequest(req, res);
+
+    assert.equal(statusCode, 201);
+    assert.equal(capturedCreateData.donorId, 2);
+    assert.equal(capturedCreateData.requesterId, 1);
+    assert.equal(capturedCreateData.bloodGroup, "O_POSITIVE");
+    assert.equal(capturedCreateData.hospitalName, null);
+    assert.equal(capturedCreateData.hospitalCity, null);
+    assert.equal(capturedCreateData.urgency, "WITHIN_24H");
+
+    assert.equal(payload.hospitalName, null);
+    assert.equal(payload.hospitalCity, null);
+    assert.equal(payload.urgency, "WITHIN_24H");
+
+    assert.equal(capturedNotification.title, "New Blood Donation Request");
+    assert.equal(
+      capturedNotification.message,
+      "A request for O_POSITIVE blood was sent to you.",
+    );
+    assert.equal(capturedNotification.data.hospitalName, null);
+    assert.equal(capturedNotification.data.urgency, "WITHIN_24H");
+  } finally {
+    prisma.user.findUnique = originalFindUnique;
+    prisma.donationRequest.create = originalCreate;
+    notificationService.sendNotification = originalSendNotification;
   }
 });
