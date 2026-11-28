@@ -3,6 +3,10 @@ import { prisma } from "../lib/prisma.js";
 import { BloodGroup, NotificationType } from "../generated/prisma/enums.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { calculateDistanceKm } from "../lib/geo.js";
+import {
+  getCompatibleDonorGroups,
+  getMatchType,
+} from "../lib/bloodCompatibility.js";
 
 export const createUser = async (req: Request, res: Response) => {
   const { name, bloodGroup, phone, address, city, state, latitude, longitude } =
@@ -59,10 +63,16 @@ export const getUsers = async (req: Request, res: Response) => {
     }
   }
 
+  const requestedBloodGroup =
+    typeof bloodGroup === "string" ? (bloodGroup as BloodGroup) : undefined;
+  const compatibleGroups = requestedBloodGroup
+    ? getCompatibleDonorGroups(requestedBloodGroup)
+    : undefined;
+
   const users = await prisma.user.findMany({
     where: {
       id: { not: userId },
-      ...(bloodGroup && { bloodGroup: bloodGroup as BloodGroup }),
+      ...(compatibleGroups && { bloodGroup: { in: compatibleGroups } }),
     },
     select: {
       id: true,
@@ -100,20 +110,34 @@ export const getUsers = async (req: Request, res: Response) => {
       city: user.city,
       state: user.state,
       distanceKm,
+      ...(requestedBloodGroup && {
+        matchType: getMatchType(requestedBloodGroup, user.bloodGroup),
+      }),
     };
   });
 
-  if (hasCoords) {
+  if (requestedBloodGroup || hasCoords) {
     result.sort((a, b) => {
-      if (a.distanceKm !== null && b.distanceKm !== null) {
-        return a.distanceKm - b.distanceKm;
+      if (requestedBloodGroup) {
+        const rankA = a.matchType === "EXACT" ? 0 : 1;
+        const rankB = b.matchType === "EXACT" ? 0 : 1;
+        if (rankA !== rankB) {
+          return rankA - rankB;
+        }
       }
-      if (a.distanceKm !== null && b.distanceKm === null) {
-        return -1;
+
+      if (hasCoords) {
+        if (a.distanceKm !== null && b.distanceKm !== null) {
+          return a.distanceKm - b.distanceKm;
+        }
+        if (a.distanceKm !== null) {
+          return -1;
+        }
+        if (b.distanceKm !== null) {
+          return 1;
+        }
       }
-      if (a.distanceKm === null && b.distanceKm !== null) {
-        return 1;
-      }
+
       return 0;
     });
   }
